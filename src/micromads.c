@@ -14,8 +14,10 @@ The finite state machine has:
 
 ******************************************************************************/
 #include "micromads.h"
-#include "mm_types.h"
 /* USER CODE BEGIN includes */
+#include "mm_types.h"
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END includes */
 
 // SEARCH FOR Your Code Here FOR CODE INSERTION POINTS!
@@ -92,6 +94,10 @@ state_t do_disconnected(state_data_t *data) {
   /* USER CODE BEGIN do_disconnected */
   /* Your Code Here */
 
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+  agent -> rx_index = 0;
+  agent -> state_tick = 0;
+
   /* USER CODE END do_disconnected */
   switch (next_state) {
   case STATE_REQ_CONNECTING:
@@ -110,6 +116,12 @@ state_t do_req_connecting(state_data_t *data) {
   state_t next_state = STATE_REQ_WAIT_SETTINGS;
   /* USER CODE BEGIN do_req_connecting */
   /* Your Code Here */
+
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  // TODO: Qui richiameremo la funzione LwIP per aprire il socket TCP REQ 
+  // verso agent->broker_ip e agent->broker_port.
+  // Se la connessione fallisce, forzeremo: next_state = STATE_ERROR;
 
   /* USER CODE END do_req_connecting */
   switch (next_state) {
@@ -130,6 +142,15 @@ state_t do_req_wait_settings(state_data_t *data) {
   state_t next_state = STATE_REQ_WAIT_TIMECODE;
   /* USER CODE BEGIN do_req_wait_settings */
   /* Your Code Here */
+
+  // STRUTTURA DEL MESSAGGIO REQ DI MADS:
+  // Frame 1: Versione della libreria (es. "2.1.1")
+  // Frame 2: Comando "settings"
+  // Frame 3: Nome dell'agente (es. agent->name)
+  
+  // TODO: Scriveremo qui la logica di invio tramite LwIP (tcp_write)
+  // e rimarremo in questo stato finché la callback di ricezione non flagga 
+  // che il file INI è stato interamente scaricato.
 
   /* USER CODE END do_req_wait_settings */
   switch (next_state) {
