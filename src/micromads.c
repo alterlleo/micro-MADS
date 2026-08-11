@@ -16,6 +16,7 @@ The finite state machine has:
 #include "micromads.h"
 /* USER CODE BEGIN includes */
 #include "mm_types.h"
+#include "mm_zmtp.h"
 #include <string.h>
 #include <stdio.h>
 /* USER CODE END includes */
@@ -119,9 +120,9 @@ state_t do_req_connecting(state_data_t *data) {
 
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
-  // TODO: Qui richiameremo la funzione LwIP per aprire il socket TCP REQ 
-  // verso agent->broker_ip e agent->broker_port.
-  // Se la connessione fallisce, forzeremo: next_state = STATE_ERROR;
+  if (!mm_zmtp_connect_req(agent, agent->broker_ip, agent->broker_port)) {
+    next_state = STATE_ERROR;
+  }
 
   /* USER CODE END do_req_connecting */
   switch (next_state) {
@@ -143,14 +144,34 @@ state_t do_req_wait_settings(state_data_t *data) {
   /* USER CODE BEGIN do_req_wait_settings */
   /* Your Code Here */
 
-  // STRUTTURA DEL MESSAGGIO REQ DI MADS:
-  // Frame 1: Versione della libreria (es. "2.1.1")
-  // Frame 2: Comando "settings"
-  // Frame 3: Nome dell'agente (es. agent->name)
-  
-  // TODO: Scriveremo qui la logica di invio tramite LwIP (tcp_write)
-  // e rimarremo in questo stato finché la callback di ricezione non flagga 
-  // che il file INI è stato interamente scaricato.
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+  static bool request_sent = false;
+
+  if (!request_sent) {
+    if (mm_zmtp_send_settings_request(agent)) {
+      request_sent = true;
+      agent -> state_tick = 0;
+    } else {
+      next_state = STATE_ERROR;
+    }
+  } else {
+    if (agent -> rx_index > 0) {
+      // TODO: mads.ini parsing logic here
+      
+      request_sent = false;
+      agent -> rx_index = 0; 
+      next_state = STATE_REQ_WAIT_TIMECODE;
+    } else {
+
+      agent -> state_tick++;
+      if (agent -> state_tick > 5000) { // simulated timeout
+        request_sent = false;
+        next_state = STATE_ERROR;
+      } else {
+        next_state = NO_CHANGE;
+      }
+    }
+  }
 
   /* USER CODE END do_req_wait_settings */
   switch (next_state) {
@@ -172,6 +193,29 @@ state_t do_req_wait_timecode(state_data_t *data) {
   /* USER CODE BEGIN do_req_wait_timecode */
   /* Your Code Here */
 
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  static bool tc_sent = false;
+
+  if (!tc_sent) {
+    if (mm_zmtp_send_timecode_request(agent)) {
+      tc_sent = true;
+      agent -> rx_index = 0; 
+    } else {
+      next_state = STATE_ERROR;
+    }
+} else {
+    if (agent -> rx_index > 0) {
+      
+      mm_zmtp_close_pcb(&agent -> req_pcb);
+
+      tc_sent = false;
+      agent -> rx_index = 0;
+      next_state = STATE_PUBSUB_CONNECTING;
+    } else {
+      next_state = NO_CHANGE; 
+    }
+  }
   /* USER CODE END do_req_wait_timecode */
   switch (next_state) {
   case STATE_PUBSUB_CONNECTING:
@@ -192,6 +236,13 @@ state_t do_pubsub_connecting(state_data_t *data) {
   /* USER CODE BEGIN do_pubsub_connecting */
   /* Your Code Here */
 
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  // Qui apriremo i socket PUB (per spedire i dati) e SUB (per ricevere i comandi)
+  // basandoci sugli indirizzi IP/Porta che abbiamo estratto dal mads.ini
+  // Per ora simuliamo l'aggancio con successo:
+  next_state = STATE_READY;
+
   /* USER CODE END do_pubsub_connecting */
   switch (next_state) {
   case STATE_READY:
@@ -211,6 +262,9 @@ state_t do_ready(state_data_t *data) {
   state_t next_state = NO_CHANGE;
   /* USER CODE BEGIN do_ready */
   /* Your Code Here */
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  // operation of while(1)
 
   /* USER CODE END do_ready */
   switch (next_state) {
