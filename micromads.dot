@@ -1,0 +1,31 @@
+digraph "micromads" {
+  init [label="do_init"]
+  disconnected      [label="do_disconnected"]
+  req_connecting    [label="do_req_connecting"]
+  req_wait_settings [label="do_req_wait_settings"]
+  req_wait_timecode [label="do_req_wait_timecode"]
+  pubsub_connecting [label="do_pubsub_connecting"]
+  ready             [label="do_ready"]
+  error             [label="do_error"]
+
+  init -> disconnected [label="#"]
+
+  disconnected -> req_connecting [label="on_start"]
+
+  req_connecting -> req_wait_settings [label="on_tcp_connected"]
+  req_connecting -> error             [label="on_tcp_error"]
+
+  req_wait_settings -> req_wait_timecode [label="on_settings_rx"]
+  req_wait_settings -> error             [label="on_timeout"]
+
+  req_wait_timecode -> pubsub_connecting [label="on_timecode_rx"]
+  req_wait_timecode -> error             [label="on_timeout"]
+
+  pubsub_connecting -> ready [label="on_pubsub_ready"]
+  pubsub_connecting -> error [label="on_tcp_error"]
+
+  ready -> ready [label="stay"]
+  ready -> error [label="on_connection_lost"]
+
+  error -> disconnected [label="on_reset"]
+}
