@@ -33,7 +33,7 @@ Network connections over TCP guarantee reliable, ordered data delivery. Unlike d
 ### Native MADS Protocol & Lightweight Framing
 To integrate smoothly into an existing MADS deployment, micro-MADS mirrors the core negotiation sequence of the official framework, bypassing heavy dependencies like `libzmq` through direct TCP interaction:
 
-* **The Bootstrap Handshake (REQ Pattern):** Upon booting, the microcontroller opens a TCP connection to the broker and executes the native initialization sequence[cite: 13]:
-  1. It requests its specific configuration section from `mads.ini` by sending a structured multi-part frame (`[library_version, "settings", agent_name]`)[cite: 13].
-  2. It synchronizes its internal clock by requesting the system timecode (`[version, "timecode"]`)[cite: 13].
-* **Low-Overhead Streaming (PUB/SUB Pattern):** Once initialized, the agent processes the configuration via a zero-allocation stream parser and transitions to steady-state operation. It streams telemetry and receives commands using MADS's native legacy two-part frame format (`[topic] [json_payload]`)[cite: 13] over raw TCP, avoiding the performance overhead of heavy binary headers or MessagePack encoding on the microcontroller.
+* **The Bootstrap Handshake (REQ Pattern):** Upon booting, the microcontroller opens a TCP connection to the broker and executes the native initialization sequence:
+  1. It requests its specific configuration section from `mads.ini` by sending a structured multi-part frame (`[library_version, "settings", agent_name]`).
+  2. It synchronizes its internal clock by requesting the system timecode (`[version, "timecode"]`).
+* **Low-Overhead Streaming (PUB/SUB Pattern):** Once initialized, the agent processes the configuration via a zero-allocation stream parser and transitions to steady-state operation. It streams telemetry and receives commands using MADS's native legacy two-part frame format (`[topic] [json_payload]`) over raw TCP, avoiding the performance overhead of heavy binary headers or MessagePack encoding on the microcontroller.
