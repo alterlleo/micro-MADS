@@ -37,3 +37,35 @@ To integrate smoothly into an existing MADS deployment, micro-MADS mirrors the c
   1. It requests its specific configuration section from `mads.ini` by sending a structured multi-part frame (`[library_version, "settings", agent_name]`).
   2. It synchronizes its internal clock by requesting the system timecode (`[version, "timecode"]`).
 * **Low-Overhead Streaming (PUB/SUB Pattern):** Once initialized, the agent processes the configuration via a zero-allocation stream parser and transitions to steady-state operation. It streams telemetry and receives commands using MADS's native legacy two-part frame format (`[topic] [json_payload]`) over raw TCP, avoiding the performance overhead of heavy binary headers or MessagePack encoding on the microcontroller.
+
+---
+
+## Microcontroller Requirements
+
+To run **micro-MADS** on a bare-metal environment, your hardware and project configuration must meet specific architectural requirements. The library is purposely designed to offload network operations from the main CPU, ensuring that your critical, high-frequency real-time tasks—such as multi-axis motor control or rapid sensor acquisition—are never starved or interrupted.
+
+### Hardware Prerequisites
+* **Microcontroller with Hardware MAC:** An STM32 equipped with a hardware Ethernet MAC (e.g., the STM32H7 series, commonly found on Nucleo-H7 boards).
+* **Physical Layer Transceiver (PHY):** An external Ethernet PHY chip connected to the microcontroller to translate MAC data into electrical signals over the RJ45 cable.
+
+### STM32CubeMX Configuration
+micro-MADS does not require an RTOS. However, the underlying network infrastructure must be configured via STM32CubeMX before including the library:
+
+1. **Ethernet (ETH) Peripheral:** 
+  
+   * Located under the *Connectivity* tab, enable the ETH peripheral.
+   * Set the mode to **RMII** (Reduced Media Independent Interface) to properly route the physical pins of your STM32 to the external PHY chip.
+2. **LwIP (Lightweight IP) Middleware:**
+   
+   * Located under the *Middleware* tab, enable **LwIP**. 
+   * This action imports the necessary TCP/IP stack into your project. Within the LwIP parameters, you can configure network addressing (DHCP or Static IP).
+   * *Note:* Ensure you allocate sufficient RAM (Heap and Memory Pool sizes) for the network packet buffers (`pbuf`) based on your expected MADS payload sizes.
+
+### Hardware Networking
+micro-MADS achieves its zero-blocking performance by heavily leveraging the STM32 hardware architecture rather than raw CPU cycles:
+
+* **RAM-Only Operations:** When the agent publishes a telemetry message, micro-MADS simply copies your payload into an LwIP packet buffer (`pbuf`) in RAM. LwIP then rapidly appends the necessary TCP, IP, and MAC headers.
+* **DMA (Direct Memory Access) Offloading:** The CPU does not wait for the data to physically travel over the wire. Instead, the low-level STM32 Ethernet driver instructs the DMA controller to fetch the assembled packet directly from RAM and push it to the hardware MAC.
+* **Background Transmission:** The MAC automatically forwards the byte stream to the PHY, and finally out to the Ethernet cable.
+
+Because the entire transmission pipeline relies on DMA and hardware peripherals, the network function calls return in a fraction of a microsecond. Your CPU is immediately freed to resume executing its precise state machine and real-time control loops, while the network traffic flows completely in the background.
