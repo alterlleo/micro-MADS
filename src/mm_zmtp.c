@@ -182,6 +182,39 @@ bool mm_zmtp_connect_req(micromads_agent_t *agent, const char *ip, uint16_t port
   return true;
 }
 
+// Funzione generica per connettere QUALSIASI socket ZMTP
+// socket_type: REQ, PUB o SUB
+// pcb_ptr: puntatore alla variabile dove salvare il PCB (es. &agent->pub_pcb)
+bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t port, mm_zmq_socket_type_t type, void **pcb_ptr) {
+  
+  struct tcp_pcb *pcb = tcp_new();
+  if (!pcb) return false;
+  *pcb_ptr = pcb; 
+  
+  tcp_arg(pcb, agent);
+  tcp_recv(pcb, mm_tcp_recv_callback);
+  tcp_err(pcb, mm_tcp_error_callback);
+
+  // Async connect
+  ip_addr_t remote_addr;
+  if (!ipaddr_aton(ip, &remote_addr)) {
+    tcp_abort(pcb);
+    agent -> req_pcb = NULL;
+    return false;
+  }
+
+  err_t err = tcp_connect(pcb, &remote_addr, port, mm_tcp_connect_callback);
+  if (err != ERR_OK) {
+    tcp_abort(pcb);
+    *pcb_ptr = NULL;
+    return false;
+  }
+  // mm_zmtp_send_greeting(pcb);
+  // mm_zmtp_send_ready(pcb, type);
+  
+  return true;
+}
+
 bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
   if (agent -> req_pcb == NULL) return false;
   struct tcp_pcb *pcb = (struct tcp_pcb *)agent -> req_pcb;

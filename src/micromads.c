@@ -238,10 +238,20 @@ state_t do_pubsub_connecting(state_data_t *data) {
 
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
-  // Qui apriremo i socket PUB (per spedire i dati) e SUB (per ricevere i comandi)
-  // basandoci sugli indirizzi IP/Porta che abbiamo estratto dal mads.ini
-  // Per ora simuliamo l'aggancio con successo:
-  next_state = STATE_READY;
+  // opening pub socket
+  if (!mm_zmtp_connect_pub(agent, agent -> config.pub_endpoint_ip, agent -> config.pub_endpoint_port)) {
+      next_state = STATE_ERROR;
+  }
+
+  // opingin sub socket
+  if (!mm_zmtp_connect_sub(agent, agent -> config.sub_endpoint_ip, agent -> config.sub_endpoint_port)) {
+      next_state = STATE_ERROR;
+  }
+
+  // send subscription request to topic
+  if (!mm_zmtp_send_subscribe(agent -> sub_pcb, agent -> config.sub_topic)) {
+      next_state = STATE_ERROR;
+  }
 
   /* USER CODE END do_pubsub_connecting */
   switch (next_state) {
@@ -332,6 +342,11 @@ void on_start(state_data_t *data) {
 // 1. from req_connecting to req_wait_settings
 void on_tcp_connected(state_data_t *data) {
   /* USER CODE BEGIN on_tcp_connected */
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+  if (agent->req_pcb != NULL) {
+    mm_zmtp_send_greeting(agent->req_pcb);
+    mm_zmtp_send_ready(agent->req_pcb, MM_ZMQ_SOCKET_REQ);
+  }
   /* Your Code Here */
   /* USER CODE END on_tcp_connected */
 }
