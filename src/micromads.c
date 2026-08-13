@@ -120,7 +120,7 @@ state_t do_req_connecting(state_data_t *data) {
 
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
-  if (!mm_zmtp_connect_req(agent, agent->broker_ip, agent->broker_port)) {
+  if (!mm_zmtp_connect_socket(agent, agent->broker_ip, agent->broker_port, MM_ZMQ_SOCKET_REQ, &agent->req_pcb)) {
     next_state = STATE_ERROR;
   }
 
@@ -249,9 +249,9 @@ state_t do_pubsub_connecting(state_data_t *data) {
   }
 
   // send subscription request to topic
-  if (!mm_zmtp_send_subscribe(agent -> sub_pcb, agent -> config.sub_topic)) {
-      next_state = STATE_ERROR;
-  }
+  // if (!mm_zmtp_send_subscribe(agent -> sub_pcb, agent -> config.sub_topic)) {
+  //     next_state = STATE_ERROR;
+  // }
 
   /* USER CODE END do_pubsub_connecting */
   switch (next_state) {
@@ -342,11 +342,25 @@ void on_start(state_data_t *data) {
 // 1. from req_connecting to req_wait_settings
 void on_tcp_connected(state_data_t *data) {
   /* USER CODE BEGIN on_tcp_connected */
-  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  /*
+    micromads_agent_t *agent = (micromads_agent_t *)data;
   if (agent->req_pcb != NULL) {
     mm_zmtp_send_greeting(agent->req_pcb);
     mm_zmtp_send_ready(agent->req_pcb, MM_ZMQ_SOCKET_REQ);
   }
+  
+  if (agent->pub_pcb != NULL) {
+    mm_zmtp_send_greeting(agent->pub_pcb);
+    mm_zmtp_send_ready(agent->pub_pcb, MM_ZMQ_SOCKET_PUB);
+  }
+  if (agent->sub_pcb != NULL) {
+    mm_zmtp_send_greeting(agent->sub_pcb);
+    mm_zmtp_send_ready(agent->sub_pcb, MM_ZMQ_SOCKET_SUB);
+    mm_zmtp_send_subscribe(agent->sub_pcb, agent->config.sub_topic);
+  }
+
+  */
   /* Your Code Here */
   /* USER CODE END on_tcp_connected */
 }

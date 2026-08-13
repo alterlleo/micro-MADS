@@ -106,21 +106,29 @@ static err_t mm_tcp_recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *
 
   if (p == NULL) {
     // Broker closed
+    if (tpcb == agent->req_pcb) agent->req_pcb = NULL;
+    if (tpcb == agent->pub_pcb) agent->pub_pcb = NULL;
+    if (tpcb == agent->sub_pcb) agent->sub_pcb = NULL;
     tcp_close(tpcb);
-    agent -> req_pcb = NULL;
     return ERR_OK;
   }
 
   if (err == ERR_OK) {
     // Copy received data (prevent overflow)
-    u16_t copy_len = p -> tot_len;
-    if (copy_len > (MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1)) {
-      copy_len = MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1; // prevent overflow
-    }
+    if (tpcb == agent->req_pcb) {
+      u16_t copy_len = p->tot_len;
+      if (copy_len > (MM_MAX_PAYLOAD_LEN - agent->rx_index - 1)) {
+        copy_len = MM_MAX_PAYLOAD_LEN - agent->rx_index - 1; // prevent overflow
+      }
 
-    pbuf_copy_partial(p, agent -> rx_buffer + agent -> rx_index, copy_len, 0);
-    agent -> rx_index += copy_len;
-    agent -> rx_buffer[agent -> rx_index] = '\0'; // NUL terminator
+      pbuf_copy_partial(p, agent->rx_buffer + agent->rx_index, copy_len, 0);
+      agent->rx_index += copy_len;
+      agent->rx_buffer[agent->rx_index] = '\0';
+    
+    } else if(tpcb == agent -> sub_pcb){
+
+      // TODO: circular buffer to elaborate the json input
+    }
 
     // Ack received bytes
     tcp_recved(tpcb, p -> tot_len);
@@ -144,7 +152,17 @@ static void mm_tcp_error_callback(void *arg, err_t err) {
 static err_t mm_tcp_connect_callback(void *arg, struct tcp_pcb *tpcb, err_t err) {
   micromads_agent_t *agent = (micromads_agent_t *)arg;
   if (err != ERR_OK) return err;
-  // Connected
+  mm_zmtp_send_greeting(tpcb);
+
+  if (tpcb == agent->req_pcb) {
+    mm_zmtp_send_ready(tpcb, MM_ZMQ_SOCKET_REQ);
+  } else if (tpcb == agent->pub_pcb) {
+    mm_zmtp_send_ready(tpcb, MM_ZMQ_SOCKET_PUB);
+  } else if (tpcb == agent->sub_pcb) {
+    mm_zmtp_send_ready(tpcb, MM_ZMQ_SOCKET_SUB);
+    mm_zmtp_send_subscribe(tpcb, agent->config.sub_topic);
+  }
+  
   return ERR_OK;
 }
 
@@ -199,7 +217,7 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
   ip_addr_t remote_addr;
   if (!ipaddr_aton(ip, &remote_addr)) {
     tcp_abort(pcb);
-    agent -> req_pcb = NULL;
+    *pcb_ptr = NULL;
     return false;
   }
 
