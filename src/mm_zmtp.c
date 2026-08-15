@@ -125,9 +125,38 @@ static err_t mm_tcp_recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *
       agent->rx_index += copy_len;
       agent->rx_buffer[agent->rx_index] = '\0';
     
-    } else if(tpcb == agent -> sub_pcb){
-
-      // TODO: circular buffer to elaborate the json input
+    } else if (tpcb == agent->sub_pcb) {
+      
+      uint8_t *data = (uint8_t *)p->payload;
+      uint16_t len = p->tot_len;
+      if (len > 4) {
+        uint8_t flags1 = data[0];
+        uint8_t len1 = data[1];
+        
+        // if first fram has flag MORE (0x01)
+        if (flags1 == 0x01 && (2 + len1 + 2) < len) {
+            
+          char *rx_topic = (char *)&data[2]; // no copy in RAM
+          uint8_t flags2 = data[2 + len1]; // 2nd frame = payload
+          uint8_t len2 = data[2 + len1 + 1];
+          
+          if (flags2 == 0x00 && (2 + len1 + 2 + len2) <= len) {
+            char *rx_payload = (char *)&data[2 + len1 + 2];
+            // NULL at the end of LwIP pbuf
+            char backup_t = data[2 + len1]; 
+            char backup_p = data[2 + len1 + 2 + len2];
+            data[2 + len1] = '\0';
+            if ((2 + len1 + 2 + len2) < len) data[2 + len1 + 2 + len2] = '\0';
+            
+            // callback pointer
+            if (agent->on_command_received != NULL) {
+              agent->on_command_received(rx_topic, rx_payload);
+            }
+            data[2 + len1] = backup_t;
+            if ((2 + len1 + 2 + len2) < len) data[2 + len1 + 2 + len2] = backup_p;
+          }
+        }
+      }
     }
 
     // Ack received bytes
