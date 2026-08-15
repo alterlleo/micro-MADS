@@ -239,11 +239,11 @@ state_t do_pubsub_connecting(state_data_t *data) {
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
   // opening pub socket
-  if (!mm_zmtp_connect_socket(agent, agent->config.pub_endpoint_ip, agent->config.pub_endpoint_port, MM_ZMQ_SOCKET_PUB, &agent->pub_pcb)) {
+  if (!mm_zmtp_connect_socket(agent, agent -> config.pub_endpoint_ip, agent -> config.pub_endpoint_port, MM_ZMQ_SOCKET_PUB, &agent -> pub_pcb)) {
       next_state = STATE_ERROR;
   }
 
-  if (!mm_zmtp_connect_socket(agent, agent->config.sub_endpoint_ip, agent->config.sub_endpoint_port, MM_ZMQ_SOCKET_SUB, &agent->sub_pcb)) {
+  if (!mm_zmtp_connect_socket(agent, agent -> config.sub_endpoint_ip, agent -> config.sub_endpoint_port, MM_ZMQ_SOCKET_SUB, &agent -> sub_pcb)) {
       next_state = STATE_ERROR;
   }
 
