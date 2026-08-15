@@ -69,3 +69,37 @@ micro-MADS achieves its zero-blocking performance by heavily leveraging the STM3
 * **Background Transmission:** The MAC automatically forwards the byte stream to the PHY, and finally out to the Ethernet cable.
 
 Because the entire transmission pipeline relies on DMA and hardware peripherals, the network function calls return in a fraction of a microsecond. Your CPU is immediately freed to resume executing its precise state machine and real-time control loops, while the network traffic flows completely in the background.
+
+## How to read MADS data from Microcontroller
+Without any `JSON` library, the best choice for the bare-metal coding is to use the C functions as `strstr` and `sscanf`. Here is an example of the function `my_callback`:
+
+```c
+#include <stdio.h>
+#include <string.h>
+
+void my_command_callback(const char *topic, const char *payload) {
+   // payload = "{\"motor_x\": 150.5, \"enable\": 1}"
+
+   // check the topic
+   if (strcmp(topic, "setpoint") == 0) {
+      
+      double target_pos = 0.0;
+      int enable_flag = 0;
+      
+      char *ptr_pos = strstr(payload, "\"motor_x\"");
+      if (ptr_pos) {
+         // extract the double after the ":" character
+         sscanf(ptr_pos, "\"motor_x\": %lf", &target_pos);
+      }
+      
+      char *ptr_en = strstr(payload, "\"enable\"");
+      if (ptr_en) {
+         sscanf(ptr_en, "\"enable\": %d", &enable_flag);
+      }
+      
+      // Use the data
+      // ---
+   }
+}
+
+```
