@@ -103,3 +103,31 @@ void my_command_callback(const char *topic, const char *payload) {
 }
 
 ```
+
+### How to publish data into MADS network
+As the whole library is operating without `JSON` libraries, it is mandatory to create the message according to `JSON` layout, paying attention to add the `\"` escape:
+
+```c
+void publish_telemetry(int data_a, int data_b, double data_c) {
+   // Let's create a buffer. Tipically, 256 bytes are enough
+   char json_buffer[256];
+   // format the JSON text
+   snprintf(json_buffer, sizeof(json_buffer), 
+            "{"
+            "\"data_a\": %d, "
+            "\"data_b\": %d, "
+            "\"data_c\": %.2f, "
+            "\"status\": \"running\""
+            "}", 
+            data_a, data_b, data_c);
+
+   // The resulting JSON message will be displayed like this:
+   // {"data_a": 1200, "data_b": -450, "data_c": 35.50, "status": "running"}
+   
+   // publish
+   if (mm_agent_publish(&my_agent, json_buffer)) {
+      // data published
+   } else {
+      // error, agent not ready or disconnected
+   }
+}
