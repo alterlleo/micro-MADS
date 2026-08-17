@@ -10,7 +10,7 @@
 
 ## Why micro-MADS?
 
-MADS is a powerful distributed agent framework traditionally designed for full-fledged operating systems (Linux/macOS). **micro-MADS** bridges the gap between the edge and the cloud by bringing the MADS ecosystem directly to microcontrollers—starting with high-performance STM32 chips—allowing bare-metal hardware to act as first-class, lightweight network nodes without requiring an external bridge computer.
+[MADS](https://github.com/pbosetti/MADS) is a powerful distributed agent framework traditionally designed for full-fledged operating systems (Linux/macOS). **micro-MADS** bridges the gap between the edge and the cloud by bringing the MADS ecosystem directly to microcontrollers—starting with high-performance STM32 chips—allowing bare-metal hardware to act as first-class, lightweight network nodes without requiring an external bridge computer.
 
 ---
 
