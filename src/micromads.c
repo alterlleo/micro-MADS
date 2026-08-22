@@ -17,6 +17,7 @@ The finite state machine has:
 /* USER CODE BEGIN includes */
 #include "mm_types.h"
 #include "mm_zmtp.h"
+#include "mm_parser.h"
 #include <string.h>
 #include <stdio.h>
 /* USER CODE END includes */
