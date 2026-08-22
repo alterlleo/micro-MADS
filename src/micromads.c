@@ -156,11 +156,16 @@ state_t do_req_wait_settings(state_data_t *data) {
     }
   } else {
     if (agent -> rx_index > 0) {
-      // TODO: mads.ini parsing logic here
       
-      request_sent = false;
-      agent -> rx_index = 0; 
-      next_state = STATE_REQ_WAIT_TIMECODE;
+      if (mm_parse_settings((const char *)agent -> rx_buffer, &agent -> config, agent -> broker_ip)) {
+        request_sent = false;
+        agent -> rx_index = 0; 
+        next_state = STATE_REQ_WAIT_TIMECODE;
+      } else {
+        request_sent = false;
+        agent -> rx_index = 0; 
+        next_state = STATE_ERROR;
+      }
     } else {
 
       agent -> state_tick++;
