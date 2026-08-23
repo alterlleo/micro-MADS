@@ -20,6 +20,7 @@ The finite state machine has:
 #include "mm_parser.h"
 #include <string.h>
 #include <stdio.h>
+#include "main.h"
 /* USER CODE END includes */
 
 // SEARCH FOR Your Code Here FOR CODE INSERTION POINTS!
