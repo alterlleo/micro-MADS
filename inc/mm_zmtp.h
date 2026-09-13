@@ -11,8 +11,6 @@ typedef enum {
     MM_ZMQ_SOCKET_SUB
 } mm_zmq_socket_type_t;
 
-bool mm_zmtp_connect_req(micromads_agent_t *agent, const char *ip, uint16_t port);
-
 bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t port, mm_zmq_socket_type_t type, void **pcb_ptr);
 
 bool mm_zmtp_send_greeting(void *pcb);

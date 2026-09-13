@@ -218,40 +218,6 @@ static err_t mm_tcp_connect_callback(void *arg, struct tcp_pcb *tpcb, err_t err)
   return ERR_OK;
 }
 
-// Public API
-
-bool mm_zmtp_connect_req(micromads_agent_t *agent, const char *ip, uint16_t port) {
-
-  // Allocate PCB
-  struct tcp_pcb *pcb = tcp_new();
-  if (pcb == NULL) return false;
-
-  agent -> req_pcb = pcb;
-  agent -> rx_index = 0; // clear RX buffer
-
-  // Set context and callbacks
-  tcp_arg(pcb, agent);
-  tcp_recv(pcb, mm_tcp_recv_callback);
-  tcp_err(pcb, mm_tcp_error_callback);
-
-  // Async connect
-  ip_addr_t remote_addr;
-  if (!ipaddr_aton(ip, &remote_addr)) {
-    tcp_abort(pcb);
-    agent -> req_pcb = NULL;
-    return false;
-  }
-
-  err_t err = tcp_connect(pcb, &remote_addr, port, mm_tcp_connect_callback);
-  if (err != ERR_OK) {
-    tcp_abort(pcb);
-    agent -> req_pcb = NULL;
-    return false;
-  }
-
-  return true;
-}
-
 // Funzione generica per connettere QUALSIASI socket ZMTP
 // socket_type: REQ, PUB o SUB
 // pcb_ptr: puntatore alla variabile dove salvare il PCB (es. &agent->pub_pcb)
@@ -397,4 +363,52 @@ void mm_zmtp_close_pcb(void **pcb_ptr) {
 
     *pcb_ptr = NULL;
   }
+}
+
+void mm_zmtp_poll(micromads_agent_t *agent) {
+#ifdef USE_W5500
+    // polling socket REQ
+    if (agent->req_pcb != NULL) {
+        uint8_t req_sn = (uint8_t)((uintptr_t)agent->req_pcb);
+        uint16_t req_len = getSn_RX_RSR(req_sn);
+        
+        if (req_len > 0) {
+            if (req_len > (MM_MAX_PAYLOAD_LEN - agent->rx_index - 1)) {
+                req_len = MM_MAX_PAYLOAD_LEN - agent->rx_index - 1;
+            }
+            recv(req_sn, agent->rx_buffer + agent->rx_index, req_len);
+            agent->rx_index += req_len;
+            agent->rx_buffer[agent->rx_index] = '\0';
+        }
+    }
+    
+    // polling socket sub
+    if (agent->sub_pcb != NULL) {
+        uint8_t sub_sn = (uint8_t)((uintptr_t)agent->sub_pcb);
+        uint16_t sub_len = getSn_RX_RSR(sub_sn);
+        
+        if (sub_len > 4) {
+            uint8_t data[MM_MAX_PAYLOAD_LEN];
+            if (sub_len > sizeof(data)) sub_len = sizeof(data);
+            recv(sub_sn, data, sub_len);
+            
+            uint8_t flags1 = data[0];
+            uint8_t len1 = data[1];
+            if (flags1 == 0x01 && (2 + len1 + 2) < sub_len) {
+                char *rx_topic = (char *)&data[2];
+                uint8_t flags2 = data[2 + len1];
+                uint8_t len2 = data[2 + len1 + 1];
+                if (flags2 == 0x00 && (2 + len1 + 2 + len2) <= sub_len) {
+                    char *rx_payload = (char *)&data[2 + len1 + 2];
+                    data[2 + len1] = '\0';
+                    if ((2 + len1 + 2 + len2) < sub_len) data[2 + len1 + 2 + len2] = '\0';
+                    if (agent->on_command_received != NULL) {
+                        agent->on_command_received(rx_topic, rx_payload);
+                    }
+                }
+            }
+        }
+    }
+
+#endif
 }

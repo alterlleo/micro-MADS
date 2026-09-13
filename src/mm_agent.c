@@ -19,6 +19,11 @@ void mm_agent_set_callback(micromads_agent_t *agent, mm_command_cb_t callback) {
 }
 
 void mm_agent_spin(micromads_agent_t *agent) {
+
+  #ifdef USE_W5500
+    mm_zmtp_poll(agent);
+  #endif
+  
   agent -> current_state = (int)run_state((state_t)agent -> current_state, (state_data_t *)agent);
 }
 
