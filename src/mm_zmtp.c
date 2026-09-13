@@ -53,26 +53,22 @@ static const uint8_t ZMTP_READY_SUB[27] = {
 };
 
 // Packet and send a single ZMTP frame over TCP
-static bool send_zmtp_frame(struct tcp_pcb *pcb, const char *data, uint8_t len, bool more) {
+static bool send_zmtp_frame(void *pcb_ptr, const char *data, uint8_t len, bool more) {
     uint8_t header[2];
     header[0] = more ? 0x01 : 0x00; // Flag MORE
     header[1] = len;
 
   #ifdef USE_W5500
-
     uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
     if (send(socket_num, header, 2) <= 0) return false;
     if (send(socket_num, (uint8_t*)data, len) <= 0) return false;    
     return true;
-
-#else
-
+  #else
     struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     if (tcp_write(pcb, header, 2, TCP_WRITE_FLAG_COPY) != ERR_OK) return false;
     if (tcp_write(pcb, data, len, TCP_WRITE_FLAG_COPY) != ERR_OK) return false;
     return true;
-
-#endif
+  #endif
 }
 
 
@@ -87,25 +83,35 @@ static bool send_zmtp_frame(struct tcp_pcb *pcb, const char *data, uint8_t len, 
 
 bool mm_zmtp_send_greeting(void *pcb_ptr) {
     if (!pcb_ptr) return false;
-    struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     
+  #ifdef USE_W5500
+    uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
+    return (send(socket_num, (uint8_t*)ZMTP_GREETING, sizeof(ZMTP_GREETING)) > 0);
+  #else
+    struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     err_t err = tcp_write(pcb, ZMTP_GREETING, sizeof(ZMTP_GREETING), TCP_WRITE_FLAG_COPY);
     if (err == ERR_OK) tcp_output(pcb);
     return (err == ERR_OK);
+  #endif
 }
 
 bool mm_zmtp_send_ready(void *pcb_ptr, mm_zmq_socket_type_t socket_type) {
     if (!pcb_ptr) return false;
-    struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     
     const uint8_t *ready_frame;
     if (socket_type == MM_ZMQ_SOCKET_REQ) ready_frame = ZMTP_READY_REQ;
     else if (socket_type == MM_ZMQ_SOCKET_PUB) ready_frame = ZMTP_READY_PUB;
     else ready_frame = ZMTP_READY_SUB;
 
+  #ifdef USE_W5500
+    uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
+    return (send(socket_num, (uint8_t*)ready_frame, 27) > 0);
+  #else
+    struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     err_t err = tcp_write(pcb, ready_frame, 27, TCP_WRITE_FLAG_COPY);
     if (err == ERR_OK) tcp_output(pcb);
     return (err == ERR_OK);
+  #endif
 }
 
 /*
