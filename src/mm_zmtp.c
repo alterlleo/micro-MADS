@@ -121,8 +121,12 @@ bool mm_zmtp_send_ready(void *pcb_ptr, mm_zmq_socket_type_t socket_type) {
   / ___ \|  __/| |  | |  | | (_| | (_| \__ \
  /_/   \_\_|  |___| |_|  |_|\__,_|\__,_|___/
                                             
+
+ FOR LWIP
+
 */
 
+#ifndef USE_W5500
 // TCP recv: accumulate into agent buffer
 static err_t mm_tcp_recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
   micromads_agent_t *agent = (micromads_agent_t *)arg;
@@ -217,6 +221,8 @@ static err_t mm_tcp_connect_callback(void *arg, struct tcp_pcb *tpcb, err_t err)
   
   return ERR_OK;
 }
+
+#endif
 
 // Funzione generica per connettere QUALSIASI socket ZMTP
 // socket_type: REQ, PUB o SUB
