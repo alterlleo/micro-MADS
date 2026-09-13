@@ -293,21 +293,21 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
 
 bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
   if (agent -> req_pcb == NULL) return false;
-  struct tcp_pcb *pcb = (struct tcp_pcb *)agent -> req_pcb;
+  void *pcb = agent -> req_pcb;
 
   if (!send_zmtp_frame(pcb, MM_LIB_VERSION, strlen(MM_LIB_VERSION), true)) return false;
   if (!send_zmtp_frame(pcb, "settings", 8, true)) return false;
   if (!send_zmtp_frame(pcb, agent->name, strlen(agent->name), false)) return false;
 
 #ifndef USE_W5500
-  tcp_output(pcb);
+  tcp_output((struct tcp_pcb *)pcb);
 #endif
   return true;
 }
 
 bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   if (agent -> req_pcb == NULL) return false;
-  struct tcp_pcb *pcb = (struct tcp_pcb *)agent -> req_pcb;
+  void *pcb = agent -> req_pcb;
 
   char ver_buf[16];
   uint8_t vlen = snprintf(ver_buf, sizeof(ver_buf), "v%s", MM_LIB_VERSION);
@@ -317,7 +317,7 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   if (!send_zmtp_frame(pcb, "timecode", 8, false)) return false;
 
 #ifndef USE_W5500
-  tcp_output(pcb);
+  tcp_output((struct tcp_pcb *)pcb);
 #endif
 
   return true;
@@ -325,7 +325,7 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
 
 bool mm_zmtp_publish_legacy(micromads_agent_t *agent, const char *topic, const char *json_payload) {
   if (agent -> pub_pcb == NULL) return false;
-  struct tcp_pcb *pcb = (struct tcp_pcb *)agent -> pub_pcb;
+  void *pcb = agent -> pub_pcb;
 
   // Legacy frame PUB: [topic, json_payload]
   uint8_t tlen = strlen(topic);
@@ -335,7 +335,7 @@ bool mm_zmtp_publish_legacy(micromads_agent_t *agent, const char *topic, const c
   if (!send_zmtp_frame(pcb, json_payload, plen, false)) return false;
 
 #ifndef USE_W5500  
-  tcp_output(pcb);
+  tcp_output((struct tcp_pcb *)pcb);
 #endif
 
   return true;
@@ -343,7 +343,6 @@ bool mm_zmtp_publish_legacy(micromads_agent_t *agent, const char *topic, const c
 
 bool mm_zmtp_send_subscribe(void *pcb_ptr, const char *topic) {
   if (!pcb_ptr) return false;
-  struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
 
   uint8_t len = strlen(topic);
   uint8_t sub_frame[MM_MAX_TOPIC_LEN + 1];
@@ -353,7 +352,7 @@ bool mm_zmtp_send_subscribe(void *pcb_ptr, const char *topic) {
   if (!send_zmtp_frame(pcb, (const char *)sub_frame, len + 1, false)) return false;
   
 #ifndef USE_W5500
-  tcp_output(pcb);
+  tcp_output((struct tcp_pcb *)pcb_ptr);
 #endif
 
   return true;
