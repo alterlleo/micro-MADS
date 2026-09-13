@@ -293,7 +293,9 @@ bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
   if (!send_zmtp_frame(pcb, "settings", 8, true)) return false;
   if (!send_zmtp_frame(pcb, agent->name, strlen(agent->name), false)) return false;
 
+#ifndef USE_W5500
   tcp_output(pcb);
+#endif
   return true;
 }
 
@@ -308,7 +310,10 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   if (!send_zmtp_frame(pcb, ver_buf, vlen, true)) return false;
   if (!send_zmtp_frame(pcb, "timecode", 8, false)) return false;
 
+#ifndef USE_W5500
   tcp_output(pcb);
+#endif
+
   return true;
 }
 
@@ -323,7 +328,10 @@ bool mm_zmtp_publish_legacy(micromads_agent_t *agent, const char *topic, const c
   if (!send_zmtp_frame(pcb, topic, tlen, true)) return false;
   if (!send_zmtp_frame(pcb, json_payload, plen, false)) return false;
 
+#ifndef USE_W5500  
   tcp_output(pcb);
+#endif
+
   return true;
 }
 
@@ -338,7 +346,10 @@ bool mm_zmtp_send_subscribe(void *pcb_ptr, const char *topic) {
   memcpy(&sub_frame[1], topic, len);
   if (!send_zmtp_frame(pcb, (const char *)sub_frame, len + 1, false)) return false;
   
+#ifndef USE_W5500
   tcp_output(pcb);
+#endif
+
   return true;
 }
 
