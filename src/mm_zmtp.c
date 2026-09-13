@@ -2,10 +2,16 @@
 #include <string.h>
 #include <stdio.h>
 
-// LwIP headers (STM32)
-#include "lwip/tcp.h"
-#include "lwip/inet.h"
-#include "lwip/pbuf.h"
+// #define USE_W5500 
+
+#ifdef USE_W5500 // if w5500 is used, include WIZnet headers
+  #include "wizchip_conf.h"
+  #include "socket.h"
+#else
+  #include "lwip/tcp.h"
+  #include "lwip/inet.h"
+  #include "lwip/pbuf.h"
+#endif
 
 #define MM_LIB_VERSION "2.1.1"
 
@@ -52,10 +58,21 @@ static bool send_zmtp_frame(struct tcp_pcb *pcb, const char *data, uint8_t len, 
     header[0] = more ? 0x01 : 0x00; // Flag MORE
     header[1] = len;
 
+  #ifdef USE_W5500
+
+    uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
+    if (send(socket_num, header, 2) <= 0) return false;
+    if (send(socket_num, (uint8_t*)data, len) <= 0) return false;    
+    return true;
+
+#else
+
+    struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     if (tcp_write(pcb, header, 2, TCP_WRITE_FLAG_COPY) != ERR_OK) return false;
     if (tcp_write(pcb, data, len, TCP_WRITE_FLAG_COPY) != ERR_OK) return false;
-    
     return true;
+
+#endif
 }
 
 
@@ -234,32 +251,66 @@ bool mm_zmtp_connect_req(micromads_agent_t *agent, const char *ip, uint16_t port
 // pcb_ptr: puntatore alla variabile dove salvare il PCB (es. &agent->pub_pcb)
 bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t port, mm_zmq_socket_type_t type, void **pcb_ptr) {
   
-  struct tcp_pcb *pcb = tcp_new();
-  if (!pcb) return false;
-  *pcb_ptr = pcb; 
-  
-  tcp_arg(pcb, agent);
-  tcp_recv(pcb, mm_tcp_recv_callback);
-  tcp_err(pcb, mm_tcp_error_callback);
+  #ifdef USE_W5500
 
-  // Async connect
-  ip_addr_t remote_addr;
-  if (!ipaddr_aton(ip, &remote_addr)) {
-    tcp_abort(pcb);
-    *pcb_ptr = NULL;
-    return false;
-  }
+    uint8_t socket_num = (uint8_t)type;
+    if (socket(socket_num, Sn_MR_TCP, 0, 0) != socket_num) {
+        *pcb_ptr = NULL;
+        return false;
+    }
 
-  err_t err = tcp_connect(pcb, &remote_addr, port, mm_tcp_connect_callback);
-  if (err != ERR_OK) {
-    tcp_abort(pcb);
-    *pcb_ptr = NULL;
-    return false;
-  }
-  // mm_zmtp_send_greeting(pcb);
-  // mm_zmtp_send_ready(pcb, type);
+    uint8_t target_ip[4];
+    unsigned int ip1, ip2, ip3, ip4;
+    if (sscanf(ip, "%u.%u.%u.%u", &ip1, &ip2, &ip3, &ip4) == 4) {
+        target_ip[0] = (uint8_t)ip1;
+        target_ip[1] = (uint8_t)ip2;
+        target_ip[2] = (uint8_t)ip3;
+        target_ip[3] = (uint8_t)ip4;
+    } else {
+        *pcb_ptr = NULL;
+        return false; // IP format not valid
+    }
+
+    if (connect(socket_num, target_ip, port) != SOCK_OK) {
+        *pcb_ptr = NULL;
+        return false;
+    }
+    *pcb_ptr = (void *)(uintptr_t)socket_num; 
+    mm_zmtp_send_greeting(*pcb_ptr);
+    mm_zmtp_send_ready(*pcb_ptr, type);
+
+    return true;
   
-  return true;
+  #else
+
+    struct tcp_pcb *pcb = tcp_new();
+    if (!pcb) return false;
+    *pcb_ptr = pcb; 
+    
+    tcp_arg(pcb, agent);
+    tcp_recv(pcb, mm_tcp_recv_callback);
+    tcp_err(pcb, mm_tcp_error_callback);
+
+    // Async connect
+    ip_addr_t remote_addr;
+    if (!ipaddr_aton(ip, &remote_addr)) {
+      tcp_abort(pcb);
+      *pcb_ptr = NULL;
+      return false;
+    }
+
+    err_t err = tcp_connect(pcb, &remote_addr, port, mm_tcp_connect_callback);
+    if (err != ERR_OK) {
+      tcp_abort(pcb);
+      *pcb_ptr = NULL;
+      return false;
+    }
+    // mm_zmtp_send_greeting(pcb);
+    // mm_zmtp_send_ready(pcb, type);
+    
+    return true;
+
+  #endif
 }
 
 bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
@@ -321,11 +372,23 @@ bool mm_zmtp_send_subscribe(void *pcb_ptr, const char *topic) {
 
 void mm_zmtp_close_pcb(void **pcb_ptr) {
   if (pcb_ptr && *pcb_ptr) {
+    
+  #ifdef USE_W5500
+
+    uint8_t socket_num = (uint8_t)((uintptr_t)(*pcb_ptr));
+    close(socket_num);
+    disconnect(socket_num);
+
+  #else
+
     struct tcp_pcb *pcb = (struct tcp_pcb *)*pcb_ptr;
     tcp_arg(pcb, NULL);
     tcp_recv(pcb, NULL);
     tcp_err(pcb, NULL);
-    if (tcp_close(pcb) != ERR_OK) tcp_abort(pcb); // abort if close fails
+    if (tcp_close(pcb) != ERR_OK) tcp_abort(pcb);
+
+#endif
+
     *pcb_ptr = NULL;
   }
 }
