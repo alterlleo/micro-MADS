@@ -20,7 +20,7 @@ void mm_agent_set_callback(micromads_agent_t *agent, mm_command_cb_t callback) {
 
 void mm_agent_spin(micromads_agent_t *agent) {
 
-  #ifdef USE_W5500
+  #if defined(USE_W5500) || defined(USE_ESP32)
     mm_zmtp_poll(agent);
   #endif
   

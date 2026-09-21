@@ -7,6 +7,10 @@
 #ifdef USE_W5500 // if w5500 is used, include WIZnet headers
   #include "wizchip_conf.h"
   #include "socket.h"
+#elif defined(USE_ESP32)
+  #include <sys/socket.h>
+  #include <arpa/inet.h>
+  #include <unistd.h>
 #else
   #include "lwip/tcp.h"
   #include "lwip/inet.h"
@@ -62,6 +66,11 @@ static bool send_zmtp_frame(void *pcb_ptr, const char *data, uint8_t len, bool m
     uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
     if (send(socket_num, header, 2) <= 0) return false;
     if (send(socket_num, (uint8_t*)data, len) <= 0) return false;    
+    return true;
+  #elif defined(USE_ESP32)
+    int sock = (int)((uintptr_t)pcb_ptr);
+    if (send(sock, header, 2, 0) < 0) return false;
+    if (send(sock, data, len, 0) < 0) return false;
     return true;
   #else
     struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
@@ -126,7 +135,7 @@ bool mm_zmtp_send_ready(void *pcb_ptr, mm_zmq_socket_type_t socket_type) {
 
 */
 
-#ifndef USE_W5500
+#if !defined(USE_W5500) && !defined(USE_ESP32)
 // TCP recv: accumulate into agent buffer
 static err_t mm_tcp_recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
   micromads_agent_t *agent = (micromads_agent_t *)arg;
@@ -258,6 +267,29 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
     mm_zmtp_send_ready(*pcb_ptr, type);
 
     return true;
+
+  #elif defined(USE_ESP32)
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (sock < 0) {
+        *pcb_ptr = NULL;
+        return false;
+    }
+
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(port);
+    inet_pton(AF_INET, ip, &dest_addr.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) != 0) {
+        close(sock);
+        *pcb_ptr = NULL;
+        return false;
+    }
+    
+    *pcb_ptr = (void *)(uintptr_t)sock; 
+    mm_zmtp_send_greeting(*pcb_ptr);
+    mm_zmtp_send_ready(*pcb_ptr, type);
+    return true;
   
   #else
 
@@ -299,7 +331,7 @@ bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
   if (!send_zmtp_frame(pcb, "settings", 8, true)) return false;
   if (!send_zmtp_frame(pcb, agent->name, strlen(agent->name), false)) return false;
 
-#ifndef USE_W5500
+#if !defined(USE_W5500) && !defined(USE_ESP32)
   tcp_output((struct tcp_pcb *)pcb);
 #endif
   return true;
@@ -316,7 +348,7 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   if (!send_zmtp_frame(pcb, ver_buf, vlen, true)) return false;
   if (!send_zmtp_frame(pcb, "timecode", 8, false)) return false;
 
-#ifndef USE_W5500
+#if !defined(USE_W5500) && !defined(USE_ESP32)
   tcp_output((struct tcp_pcb *)pcb);
 #endif
 
@@ -367,6 +399,10 @@ void mm_zmtp_close_pcb(void **pcb_ptr) {
     close(socket_num);
     disconnect(socket_num);
 
+  #elif defined(USE_ESP32)
+
+    close((int)((uintptr_t)(*pcb_ptr)));
+  
   #else
 
     struct tcp_pcb *pcb = (struct tcp_pcb *)*pcb_ptr;
@@ -426,5 +462,45 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
         }
     }
 
+#elif defined(USE_ESP32)
+  // Polling Socket REQ
+  if (agent->req_pcb != NULL) {
+    int req_sn = (int)((uintptr_t)agent->req_pcb);
+    int req_len = recv(req_sn, agent->rx_buffer + agent->rx_index, 
+                        MM_MAX_PAYLOAD_LEN - agent->rx_index - 1, MSG_DONTWAIT);
+    if (req_len > 0) {
+      agent->rx_index += req_len;
+      agent->rx_buffer[agent->rx_index] = '\0';
+    }
+  }
+  
+  // Polling Socket SUB
+  if (agent->sub_pcb != NULL) {
+    int sub_sn = (int)((uintptr_t)agent->sub_pcb);
+    uint8_t data[MM_MAX_PAYLOAD_LEN];
+    int sub_len = recv(sub_sn, data, sizeof(data), MSG_DONTWAIT);
+      
+    if (sub_len > 4) {
+        uint8_t data[MM_MAX_PAYLOAD_LEN];
+        if (sub_len > sizeof(data)) sub_len = sizeof(data);
+        recv(sub_sn, data, sub_len);
+        
+        uint8_t flags1 = data[0];
+        uint8_t len1 = data[1];
+        if (flags1 == 0x01 && (2 + len1 + 2) < sub_len) {
+            char *rx_topic = (char *)&data[2];
+            uint8_t flags2 = data[2 + len1];
+            uint8_t len2 = data[2 + len1 + 1];
+            if (flags2 == 0x00 && (2 + len1 + 2 + len2) <= sub_len) {
+                char *rx_payload = (char *)&data[2 + len1 + 2];
+                data[2 + len1] = '\0';
+                if ((2 + len1 + 2 + len2) < sub_len) data[2 + len1 + 2 + len2] = '\0';
+                if (agent->on_command_received != NULL) {
+                    agent->on_command_received(rx_topic, rx_payload);
+                }
+            }
+        }
+    }
+  }
 #endif
 }
