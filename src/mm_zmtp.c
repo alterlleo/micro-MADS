@@ -478,13 +478,12 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
   if (agent->sub_pcb != NULL) {
     int sub_sn = (int)((uintptr_t)agent->sub_pcb);
     uint8_t data[MM_MAX_PAYLOAD_LEN];
+    
+    // Tenta la lettura. MSG_DONTWAIT fa tornare subito -1 se non ci sono dati.
     int sub_len = recv(sub_sn, data, sizeof(data), MSG_DONTWAIT);
       
     if (sub_len > 4) {
-        uint8_t data[MM_MAX_PAYLOAD_LEN];
-        if (sub_len > sizeof(data)) sub_len = sizeof(data);
-        recv(sub_sn, data, sub_len);
-        
+        // I dati sono GIA' dentro l'array 'data'. Non dobbiamo rileggere.
         uint8_t flags1 = data[0];
         uint8_t len1 = data[1];
         if (flags1 == 0x01 && (2 + len1 + 2) < sub_len) {
