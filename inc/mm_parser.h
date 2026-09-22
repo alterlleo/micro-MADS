@@ -4,6 +4,7 @@
 #include "mm_types.h"
 #include <stdbool.h>
 
-bool mm_parse_settings(const char *json_data, mm_config_t *config, const char *broker_ip);
+bool mm_parse_settings(const char *file_data, mm_config_t *config,
+                       const char *broker_ip, const char *agent_name);
 
 #endif
