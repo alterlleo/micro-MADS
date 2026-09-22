@@ -26,4 +26,6 @@ bool mm_zmtp_send_subscribe(void *pcb, const char *topic);
 
 void mm_zmtp_close_pcb(void **pcb);
 
+void mm_zmtp_poll(micromads_agent_t *agent);
+
 #endif

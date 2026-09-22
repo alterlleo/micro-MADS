@@ -17,7 +17,7 @@
   #include "lwip/pbuf.h"
 #endif
 
-#define MM_LIB_VERSION "2.1.1"
+#define MM_LIB_VERSION "2.4.3"
 
 /*
   _______  __ _____ ____    __  __                          
@@ -96,6 +96,9 @@ bool mm_zmtp_send_greeting(void *pcb_ptr) {
   #ifdef USE_W5500
     uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
     return (send(socket_num, (uint8_t*)ZMTP_GREETING, sizeof(ZMTP_GREETING)) > 0);
+  #elif defined(USE_ESP32)
+    int sock = (int)((uintptr_t)pcb_ptr);
+    return (send(sock, ZMTP_GREETING, sizeof(ZMTP_GREETING), 0) > 0);
   #else
     struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     err_t err = tcp_write(pcb, ZMTP_GREETING, sizeof(ZMTP_GREETING), TCP_WRITE_FLAG_COPY);
@@ -115,6 +118,9 @@ bool mm_zmtp_send_ready(void *pcb_ptr, mm_zmq_socket_type_t socket_type) {
   #ifdef USE_W5500
     uint8_t socket_num = (uint8_t)((uintptr_t)pcb_ptr);
     return (send(socket_num, (uint8_t*)ready_frame, 27) > 0);
+  #elif defined(USE_ESP32)
+    int sock = (int)((uintptr_t)pcb_ptr);
+    return (send(sock, ready_frame, 27, 0) > 0);
   #else
     struct tcp_pcb *pcb = (struct tcp_pcb *)pcb_ptr;
     err_t err = tcp_write(pcb, ready_frame, 27, TCP_WRITE_FLAG_COPY);
@@ -233,9 +239,7 @@ static err_t mm_tcp_connect_callback(void *arg, struct tcp_pcb *tpcb, err_t err)
 
 #endif
 
-// Funzione generica per connettere QUALSIASI socket ZMTP
-// socket_type: REQ, PUB o SUB
-// pcb_ptr: puntatore alla variabile dove salvare il PCB (es. &agent->pub_pcb)
+
 bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t port, mm_zmq_socket_type_t type, void **pcb_ptr) {
   
   #ifdef USE_W5500
@@ -268,12 +272,18 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
 
     return true;
 
-  #elif defined(USE_ESP32)
+#elif defined(USE_ESP32)
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (sock < 0) {
         *pcb_ptr = NULL;
         return false;
     }
+
+    struct timeval tv;
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
     struct sockaddr_in dest_addr;
     dest_addr.sin_family = AF_INET;
@@ -287,8 +297,46 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
     }
     
     *pcb_ptr = (void *)(uintptr_t)sock; 
-    mm_zmtp_send_greeting(*pcb_ptr);
-    mm_zmtp_send_ready(*pcb_ptr, type);
+    
+    // greeting + ready handshake
+    if (!mm_zmtp_send_greeting(*pcb_ptr) || !mm_zmtp_send_ready(*pcb_ptr, type)) {
+        close(sock);
+        *pcb_ptr = NULL;
+        return false;
+    }
+
+    // consume the server greeting (64 bytes)
+    uint8_t server_greeting[64];
+    int total_read = 0;
+    while (total_read < 64) {
+        int r = recv(sock, server_greeting + total_read, 64 - total_read, 0);
+        if (r <= 0) {
+            close(sock);
+            *pcb_ptr = NULL;
+            return false;
+        }
+        total_read += r;
+    }
+
+    // read and consume data
+    uint8_t ready_header[2];
+    if (recv(sock, ready_header, 2, 0) != 2) {
+        close(sock);
+        *pcb_ptr = NULL;
+        return false;
+    }
+    
+    uint8_t ready_len = ready_header[1];
+    if (ready_len > 0) {
+        uint8_t ready_payload[128];
+        int r_len = 0;
+        while (r_len < ready_len) {
+            int r = recv(sock, ready_payload + r_len, ready_len - r_len, 0);
+            if (r <= 0) break;
+            r_len += r;
+        }
+    }
+
     return true;
   
   #else
@@ -379,11 +427,12 @@ bool mm_zmtp_send_subscribe(void *pcb_ptr, const char *topic) {
   uint8_t len = strlen(topic);
   uint8_t sub_frame[MM_MAX_TOPIC_LEN + 1];
   
-  sub_frame[0] = 0x01; // Prefix for "Subscribe"
+  sub_frame[0] = 0x01; 
   memcpy(&sub_frame[1], topic, len);
-  if (!send_zmtp_frame(pcb, (const char *)sub_frame, len + 1, false)) return false;
   
-#ifndef USE_W5500
+  if (!send_zmtp_frame(pcb_ptr, (const char *)sub_frame, len + 1, false)) return false;
+  
+#if !defined(USE_W5500) && !defined(USE_ESP32)
   tcp_output((struct tcp_pcb *)pcb_ptr);
 #endif
 
@@ -464,26 +513,64 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
 
 #elif defined(USE_ESP32)
   // Polling Socket REQ
-  if (agent->req_pcb != NULL) {
-    int req_sn = (int)((uintptr_t)agent->req_pcb);
-    int req_len = recv(req_sn, agent->rx_buffer + agent->rx_index, 
-                        MM_MAX_PAYLOAD_LEN - agent->rx_index - 1, MSG_DONTWAIT);
-    if (req_len > 0) {
-      agent->rx_index += req_len;
-      agent->rx_buffer[agent->rx_index] = '\0';
+  if (agent -> req_pcb != NULL) {
+    int req_sn = (int)((uintptr_t)agent -> req_pcb);
+    static uint8_t temp_buf[8192];
+    
+    int req_len = recv(req_sn, temp_buf, sizeof(temp_buf), MSG_DONTWAIT);
+    
+    if (req_len > 2) {
+      size_t offset = 0;
+      int frame_index = 0;
+      
+      // iteration over multipart frames (max 3 frames: version, config, payload)
+      while (offset < (size_t)req_len && frame_index < 3) {
+        if (offset + 2 > (size_t)req_len) break;
+        
+        uint8_t flags = temp_buf[offset];
+        uint64_t payload_len = temp_buf[offset + 1];
+        size_t header_len = 2;
+        
+        // long zmtp frame (payload length > 255 bytes)
+        if (payload_len == 0xFF) {
+          if (offset + 10 > (size_t)req_len) break;
+          header_len = 10;
+          payload_len = 0;
+          for (int i = 0; i < 8; i++) {
+            payload_len = (payload_len << 8) | temp_buf[offset + 2 + i];
+          }
+        }
+        
+        size_t total_frame_len = header_len + (size_t)payload_len;
+        if (offset + total_frame_len > (size_t)req_len) break;
+      
+        if (frame_index == 1) {
+          if (payload_len > (MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1)) {
+            payload_len = MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1;
+          }
+          
+          memcpy(agent -> rx_buffer + agent -> rx_index, &temp_buf[offset + header_len], (size_t)payload_len);
+          agent -> rx_index += (size_t)payload_len;
+          agent -> rx_buffer[agent -> rx_index] = '\0';
+          break;
+        }
+        
+        offset += total_frame_len;
+        frame_index++;
+        
+        if (!(flags & 0x01)) break;
+      }
     }
   }
   
-  // Polling Socket SUB
+  // Polling Socket SUB (per i comandi in arrivo nello stato READY)
   if (agent->sub_pcb != NULL) {
     int sub_sn = (int)((uintptr_t)agent->sub_pcb);
     uint8_t data[MM_MAX_PAYLOAD_LEN];
     
-    // Tenta la lettura. MSG_DONTWAIT fa tornare subito -1 se non ci sono dati.
     int sub_len = recv(sub_sn, data, sizeof(data), MSG_DONTWAIT);
       
     if (sub_len > 4) {
-        // I dati sono GIA' dentro l'array 'data'. Non dobbiamo rileggere.
         uint8_t flags1 = data[0];
         uint8_t len1 = data[1];
         if (flags1 == 0x01 && (2 + len1 + 2) < sub_len) {

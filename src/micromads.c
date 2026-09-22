@@ -20,7 +20,14 @@ The finite state machine has:
 #include "mm_parser.h"
 #include <string.h>
 #include <stdio.h>
-#include "main.h"
+
+#ifdef USE_ESP32
+  #include <Arduino.h>
+  #define MM_GET_TICK() millis()
+#else
+  #include "main.h"
+  #define MM_GET_TICK() HAL_GetTick()
+#endif
 /* USER CODE END includes */
 
 // SEARCH FOR Your Code Here FOR CODE INSERTION POINTS!
@@ -76,7 +83,7 @@ state_t do_init(state_data_t *data) {
   /* Your Code Here */
 
   micromads_agent_t *agent = (micromads_agent_t *)data;
-  agent -> state_tick = HAL_GetTick();
+  agent -> state_tick = MM_GET_TICK();
 
   /* USER CODE END do_init */
   switch (next_state) {
