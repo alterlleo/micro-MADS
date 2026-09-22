@@ -166,7 +166,7 @@ state_t do_req_wait_settings(state_data_t *data) {
   } else {
     if (agent -> rx_index > 0) {
       
-      if (mm_parse_settings((const char *)agent -> rx_buffer, &agent -> config, agent -> broker_ip)) {
+      if (mm_parse_settings((const char *)agent -> rx_buffer, &agent -> config, agent -> broker_ip, agent -> name)) {
         request_sent = false;
         agent -> rx_index = 0; 
         next_state = STATE_REQ_WAIT_TIMECODE;
@@ -239,39 +239,21 @@ state_t do_req_wait_timecode(state_data_t *data) {
 // Function to be executed in state pubsub_connecting
 // valid return states: STATE_READY, STATE_ERROR
 state_t do_pubsub_connecting(state_data_t *data) {
-  state_t next_state = STATE_READY;
-  /* USER CODE BEGIN do_pubsub_connecting */
-  /* Your Code Here */
-
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
-  // opening pub socket
-  if (!mm_zmtp_connect_socket(agent, agent -> config.pub_endpoint_ip, agent -> config.pub_endpoint_port, MM_ZMQ_SOCKET_PUB, &agent -> pub_pcb)) {
-      next_state = STATE_ERROR;
+  if (!mm_zmtp_connect_socket(agent, agent->broker_ip, 9090, MM_ZMQ_SOCKET_PUB, &agent->pub_pcb)) {
+      return STATE_ERROR;
   }
 
-  if (!mm_zmtp_connect_socket(agent, agent -> config.sub_endpoint_ip, agent -> config.sub_endpoint_port, MM_ZMQ_SOCKET_SUB, &agent -> sub_pcb)) {
-      next_state = STATE_ERROR;
+  if (!mm_zmtp_connect_socket(agent, agent->broker_ip, 9091, MM_ZMQ_SOCKET_SUB, &agent->sub_pcb)) {
+      return STATE_ERROR;
   }
 
-  if (!mm_zmtp_send_subscribe(agent->sub_pcb, agent->config.sub_topic)) {
-      next_state = STATE_ERROR;
-  }
-  // send subscription request to topic
-  // if (!mm_zmtp_send_subscribe(agent -> sub_pcb, agent -> config.sub_topic)) {
-  //     next_state = STATE_ERROR;
-  // }
-
-  /* USER CODE END do_pubsub_connecting */
-  switch (next_state) {
-  case STATE_READY:
-  case STATE_ERROR:
-    break;
-  default:
-    next_state = NO_CHANGE;
+  if (!mm_zmtp_send_subscribe(agent->sub_pcb, "")) {
+      return STATE_ERROR;
   }
 
-  return next_state;
+  return STATE_READY;
 }
 
 
@@ -420,8 +402,19 @@ void on_pubsub_ready(state_data_t *data) {
   /* USER CODE BEGIN on_pubsub_ready */
   /* Your Code Here */
   micromads_agent_t *agent = (micromads_agent_t *)data;
-  const char* startup_msg = "{\"name\":\"espressniff\",\"version\":\"v2.4.3\",\"event\":1}";
-  mm_zmtp_publish_legacy(agent, "metadata", startup_msg);
+  char startup_msg[MM_MAX_PAYLOAD_LEN];
+  int startup_msg_len = snprintf(startup_msg, sizeof(startup_msg), "{"
+    "\"agent_id\":\"\","
+    "\"event\":\"startup\","
+    "\"hostname\":\"\","
+    "\"name\":\"%s\","
+    "\"version\":\"v2.4.3\","
+    "\"settings\":{}"
+  "}", agent->name);
+
+  if (startup_msg_len >= 0 && (size_t)startup_msg_len < sizeof(startup_msg)) {
+    mm_zmtp_publish_legacy(agent, "agent_event", startup_msg);
+  }
   /* USER CODE END on_pubsub_ready */
 }
 
