@@ -17,7 +17,7 @@
   #include "lwip/pbuf.h"
 #endif
 
-#define MM_LIB_VERSION "2.4.3"
+#define MM_LIB_VERSION "v2.4.3"
 
 /*
   _______  __ _____ ____    __  __                          
@@ -375,6 +375,8 @@ bool mm_zmtp_send_settings_request(micromads_agent_t *agent) {
   if (agent -> req_pcb == NULL) return false;
   void *pcb = agent -> req_pcb;
 
+  if (!send_zmtp_frame(pcb, "", 0, true)) return false;
+  
   if (!send_zmtp_frame(pcb, MM_LIB_VERSION, strlen(MM_LIB_VERSION), true)) return false;
   if (!send_zmtp_frame(pcb, "settings", 8, true)) return false;
   if (!send_zmtp_frame(pcb, agent->name, strlen(agent->name), false)) return false;
@@ -389,11 +391,9 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   if (agent -> req_pcb == NULL) return false;
   void *pcb = agent -> req_pcb;
 
-  char ver_buf[16];
-  uint8_t vlen = snprintf(ver_buf, sizeof(ver_buf), "v%s", MM_LIB_VERSION);
+  if (!send_zmtp_frame(pcb, "", 0, true)) return false;
 
-  // ["v2.1.1", "timecode"]
-  if (!send_zmtp_frame(pcb, ver_buf, vlen, true)) return false;
+  if (!send_zmtp_frame(pcb, MM_LIB_VERSION, strlen(MM_LIB_VERSION), true)) return false;
   if (!send_zmtp_frame(pcb, "timecode", 8, false)) return false;
 
 #if !defined(USE_W5500) && !defined(USE_ESP32)
@@ -516,24 +516,28 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
   if (agent -> req_pcb != NULL) {
     int req_sn = (int)((uintptr_t)agent -> req_pcb);
     static uint8_t temp_buf[8192];
+    static size_t acc_len = 0;
     
-    int req_len = recv(req_sn, temp_buf, sizeof(temp_buf), MSG_DONTWAIT);
+    int req_len = recv(req_sn, temp_buf + acc_len, sizeof(temp_buf) - acc_len, MSG_DONTWAIT);
+    if (req_len > 0) {
+      acc_len += req_len;
+    }
     
-    if (req_len > 2) {
+    if (acc_len > 2) {
       size_t offset = 0;
-      int frame_index = 0;
+      bool message_complete = false;
       
-      // iteration over multipart frames (max 3 frames: version, config, payload)
-      while (offset < (size_t)req_len && frame_index < 3) {
-        if (offset + 2 > (size_t)req_len) break;
+      // iterazione sui frame multipart
+      while (offset < acc_len) {
+        if (offset + 2 > acc_len) break;
         
         uint8_t flags = temp_buf[offset];
         uint64_t payload_len = temp_buf[offset + 1];
         size_t header_len = 2;
         
-        // long zmtp frame (payload length > 255 bytes)
+        // long zmtp frame (payload length >= 256 bytes)
         if (payload_len == 0xFF) {
-          if (offset + 10 > (size_t)req_len) break;
+          if (offset + 10 > acc_len) break;
           header_len = 10;
           payload_len = 0;
           for (int i = 0; i < 8; i++) {
@@ -542,9 +546,9 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
         }
         
         size_t total_frame_len = header_len + (size_t)payload_len;
-        if (offset + total_frame_len > (size_t)req_len) break;
-      
-        if (frame_index == 1) {
+        if (offset + total_frame_len > acc_len) break;
+        
+        if (!(flags & 0x01)) {
           if (payload_len > (MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1)) {
             payload_len = MM_MAX_PAYLOAD_LEN - agent -> rx_index - 1;
           }
@@ -552,13 +556,16 @@ void mm_zmtp_poll(micromads_agent_t *agent) {
           memcpy(agent -> rx_buffer + agent -> rx_index, &temp_buf[offset + header_len], (size_t)payload_len);
           agent -> rx_index += (size_t)payload_len;
           agent -> rx_buffer[agent -> rx_index] = '\0';
+          
+          message_complete = true;
           break;
         }
         
         offset += total_frame_len;
-        frame_index++;
-        
-        if (!(flags & 0x01)) break;
+      }
+      
+      if (message_complete) {
+          acc_len = 0; // Svuota l'accumulatore TCP per le prossime richieste
       }
     }
   }
