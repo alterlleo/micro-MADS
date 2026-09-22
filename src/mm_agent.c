@@ -1,6 +1,7 @@
 #include "mm_agent.h"
 #include "micromads.h"
 #include "mm_zmtp.h"
+#include "mads_config.h"
 #include <string.h>
 
 void mm_agent_init(micromads_agent_t *agent, const char *name, const char *broker_ip, uint16_t broker_port) {
@@ -29,7 +30,11 @@ void mm_agent_spin(micromads_agent_t *agent) {
 
 bool mm_agent_publish(micromads_agent_t *agent, const char *json_payload) {
   if ((state_t)agent -> current_state == STATE_READY && agent -> pub_pcb != NULL) {
+    #ifndef INI_PARSER
+    return mm_zmtp_publish_legacy(agent, PUB_TOPIC, json_payload);
+    #else
     return mm_zmtp_publish_legacy(agent, agent -> config.pub_topic, json_payload);
+    #endif
   }
   return false;
 }
