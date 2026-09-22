@@ -17,7 +17,9 @@ The finite state machine has:
 /* USER CODE BEGIN includes */
 #include "mm_types.h"
 #include "mm_zmtp.h"
+#ifdef INI_PARSER
 #include "mm_parser.h"
+#endif
 #include <string.h>
 #include <stdio.h>
 
@@ -166,6 +168,8 @@ state_t do_req_wait_settings(state_data_t *data) {
   } else {
     if (agent -> rx_index > 0) {
       
+      #ifdef INI_PARSER
+      
       if (mm_parse_settings((const char *)agent -> rx_buffer, &agent -> config, agent -> broker_ip, agent -> name)) {
         request_sent = false;
         agent -> rx_index = 0; 
@@ -175,6 +179,14 @@ state_t do_req_wait_settings(state_data_t *data) {
         agent -> rx_index = 0; 
         next_state = STATE_ERROR;
       }
+      
+      #else
+
+      agent -> config.sub_topic = SUB_TOPIC;
+      agent -> config.pub_topic = PUB_TOPIC;
+
+      #endif
+
     } else {
 
       agent -> state_tick++;
