@@ -11,6 +11,7 @@
   #include <sys/socket.h>
   #include <arpa/inet.h>
   #include <unistd.h>
+  #include <fcntl.h>
 #else
   #include "lwip/tcp.h"
   #include "lwip/inet.h"
@@ -280,7 +281,7 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
     }
 
     struct timeval tv;
-    tv.tv_sec = 3;
+    tv.tv_sec = 2;
     tv.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
@@ -298,45 +299,50 @@ bool mm_zmtp_connect_socket(micromads_agent_t *agent, const char *ip, uint16_t p
     
     *pcb_ptr = (void *)(uintptr_t)sock; 
     
-    // greeting + ready handshake
     if (!mm_zmtp_send_greeting(*pcb_ptr) || !mm_zmtp_send_ready(*pcb_ptr, type)) {
-        close(sock);
-        *pcb_ptr = NULL;
-        return false;
+        close(sock); *pcb_ptr = NULL; return false;
     }
 
-    // consume the server greeting (64 bytes)
     uint8_t server_greeting[64];
     int total_read = 0;
     while (total_read < 64) {
         int r = recv(sock, server_greeting + total_read, 64 - total_read, 0);
-        if (r <= 0) {
-            close(sock);
-            *pcb_ptr = NULL;
-            return false;
-        }
+        if (r <= 0) { close(sock); *pcb_ptr = NULL; return false; }
         total_read += r;
     }
 
-    // read and consume data
     uint8_t ready_header[2];
-    if (recv(sock, ready_header, 2, 0) != 2) {
-        close(sock);
-        *pcb_ptr = NULL;
-        return false;
+    int h_read = 0;
+    while (h_read < 2) {
+        int r = recv(sock, ready_header + h_read, 2 - h_read, 0);
+        if (r <= 0) { close(sock); *pcb_ptr = NULL; return false; }
+        h_read += r;
     }
     
-    uint8_t ready_len = ready_header[1];
+    uint64_t ready_len = ready_header[1];
+    
+    if (ready_len == 0xFF) {
+        uint8_t long_len[8];
+        int l_read = 0;
+        while (l_read < 8) {
+            int r = recv(sock, long_len + l_read, 8 - l_read, 0);
+            if (r <= 0) { close(sock); *pcb_ptr = NULL; return false; }
+            l_read += r;
+        }
+        ready_len = 0;
+        for (int i=0; i<8; i++) ready_len = (ready_len << 8) | long_len[i];
+    }
+
     if (ready_len > 0) {
-        uint8_t ready_payload[128];
-        int r_len = 0;
+        uint8_t trash_buf[256];
+        uint64_t r_len = 0;
         while (r_len < ready_len) {
-            int r = recv(sock, ready_payload + r_len, ready_len - r_len, 0);
+            int to_read = (ready_len - r_len > sizeof(trash_buf)) ? sizeof(trash_buf) : (ready_len - r_len);
+            int r = recv(sock, trash_buf, to_read, 0);
             if (r <= 0) break;
             r_len += r;
         }
     }
-
     return true;
   
   #else
@@ -403,16 +409,51 @@ bool mm_zmtp_send_timecode_request(micromads_agent_t *agent) {
   return true;
 }
 
+static int encode_snappy_literal(const char* input, size_t input_len, uint8_t* output) {
+    int out_idx = 0;
+    size_t len = input_len;
+
+    if (len == 0) {
+        output[out_idx++] = 0;
+        return out_idx;
+    }
+    while (len > 0) {
+        uint8_t b = len & 0x7F;
+        len >>= 7;
+        if (len > 0) b |= 0x80;
+        output[out_idx++] = b;
+    }
+
+    uint32_t lit_len = input_len - 1;
+    if (lit_len < 60) {
+        output[out_idx++] = (uint8_t)((lit_len << 2) | 0x00);
+    } else if (lit_len < 256) {
+        output[out_idx++] = (uint8_t)((60 << 2) | 0x00); 
+        output[out_idx++] = (uint8_t)(lit_len & 0xFF);
+    } else {
+        output[out_idx++] = (uint8_t)((61 << 2) | 0x00); 
+        output[out_idx++] = (uint8_t)(lit_len & 0xFF);
+        output[out_idx++] = (uint8_t)((lit_len >> 8) & 0xFF);
+    }
+
+    memcpy(&output[out_idx], input, input_len);
+    out_idx += input_len;
+
+    return out_idx;
+}
+
 bool mm_zmtp_publish_legacy(micromads_agent_t *agent, const char *topic, const char *json_payload) {
   if (agent -> pub_pcb == NULL) return false;
   void *pcb = agent -> pub_pcb;
 
-  // Legacy frame PUB: [topic, json_payload]
   uint8_t tlen = strlen(topic);
-  uint8_t plen = strlen(json_payload); // Nota: per payload > 255 byte servirà gestire i frame long (flag 0x02), ma per ora ci teniamo bassi.
+  size_t plen = strlen(json_payload); 
+
+  uint8_t snappy_buf[512]; 
+  int snappy_len = encode_snappy_literal(json_payload, plen, snappy_buf);
 
   if (!send_zmtp_frame(pcb, topic, tlen, true)) return false;
-  if (!send_zmtp_frame(pcb, json_payload, plen, false)) return false;
+  if (!send_zmtp_frame(pcb, (const char*)snappy_buf, snappy_len, false)) return false;
 
 #ifndef USE_W5500  
   tcp_output((struct tcp_pcb *)pcb);

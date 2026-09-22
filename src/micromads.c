@@ -204,9 +204,6 @@ state_t do_req_wait_settings(state_data_t *data) {
 // valid return states: STATE_PUBSUB_CONNECTING, STATE_ERROR
 state_t do_req_wait_timecode(state_data_t *data) {
   state_t next_state = STATE_PUBSUB_CONNECTING;
-  /* USER CODE BEGIN do_req_wait_timecode */
-  /* Your Code Here */
-
   micromads_agent_t *agent = (micromads_agent_t *)data;
 
   static bool tc_sent = false;
@@ -215,30 +212,26 @@ state_t do_req_wait_timecode(state_data_t *data) {
     if (mm_zmtp_send_timecode_request(agent)) {
       tc_sent = true;
       agent -> rx_index = 0; 
+      agent -> state_tick = 0;
     } else {
       next_state = STATE_ERROR;
     }
-} else {
+  } else {
     if (agent -> rx_index > 0) {
-      
       mm_zmtp_close_pcb(&agent -> req_pcb);
-
       tc_sent = false;
       agent -> rx_index = 0;
       next_state = STATE_PUBSUB_CONNECTING;
     } else {
-      next_state = NO_CHANGE; 
+      agent -> state_tick++;
+      if (agent -> state_tick > 5000) { 
+         tc_sent = false; 
+         next_state = STATE_ERROR; 
+      } else {
+         next_state = NO_CHANGE; 
+      }
     }
   }
-  /* USER CODE END do_req_wait_timecode */
-  switch (next_state) {
-  case STATE_PUBSUB_CONNECTING:
-  case STATE_ERROR:
-    break;
-  default:
-    next_state = NO_CHANGE;
-  }
-
   return next_state;
 }
 
@@ -261,6 +254,9 @@ state_t do_pubsub_connecting(state_data_t *data) {
       next_state = STATE_ERROR;
   }
 
+  if (!mm_zmtp_send_subscribe(agent->sub_pcb, agent->config.sub_topic)) {
+      next_state = STATE_ERROR;
+  }
   // send subscription request to topic
   // if (!mm_zmtp_send_subscribe(agent -> sub_pcb, agent -> config.sub_topic)) {
   //     next_state = STATE_ERROR;
@@ -309,6 +305,12 @@ state_t do_error(state_data_t *data) {
   state_t next_state = STATE_DISCONNECTED;
   /* USER CODE BEGIN do_error */
   /* Your Code Here */
+
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+
+  mm_zmtp_close_pcb(&agent->req_pcb);
+  mm_zmtp_close_pcb(&agent->pub_pcb);
+  mm_zmtp_close_pcb(&agent->sub_pcb);
 
   /* USER CODE END do_error */
   switch (next_state) {
@@ -417,6 +419,9 @@ void on_timecode_rx(state_data_t *data) {
 void on_pubsub_ready(state_data_t *data) {
   /* USER CODE BEGIN on_pubsub_ready */
   /* Your Code Here */
+  micromads_agent_t *agent = (micromads_agent_t *)data;
+  const char* startup_msg = "{\"name\":\"espressniff\",\"version\":\"v2.4.3\",\"event\":1}";
+  mm_zmtp_publish_legacy(agent, "metadata", startup_msg);
   /* USER CODE END on_pubsub_ready */
 }
 
