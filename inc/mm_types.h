@@ -40,6 +40,8 @@ typedef struct {
 
     int current_state;
     uint32_t state_tick;
+    double base_timecode;
+    uint32_t base_tick;
     mm_command_cb_t on_command_received;
     
 } micromads_agent_t;

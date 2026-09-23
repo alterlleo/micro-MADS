@@ -231,6 +231,10 @@ state_t do_req_wait_timecode(state_data_t *data) {
     }
   } else {
     if (agent -> rx_index > 0) {
+
+      agent->base_timecode = atof((const char*)agent->rx_buffer);
+      agent->base_tick = MM_GET_TICK();
+
       mm_zmtp_close_pcb(&agent -> req_pcb);
       tc_sent = false;
       agent -> rx_index = 0;
@@ -415,15 +419,23 @@ void on_pubsub_ready(state_data_t *data) {
   /* USER CODE BEGIN on_pubsub_ready */
   /* Your Code Here */
   micromads_agent_t *agent = (micromads_agent_t *)data;
+  #ifdef USE_ESP32
+    const char* hostname = "esp32";
+  #elif defined(USE_W5500)
+    const char* hostname = "w5500";
+  #else
+    const char* hostname = "stm32";
+  #endif
+
   char startup_msg[MM_MAX_PAYLOAD_LEN];
   int startup_msg_len = snprintf(startup_msg, sizeof(startup_msg), "{"
-    "\"agent_id\":\"\","
+    "\"agent_id\":\"%s\","
     "\"event\":\"startup\","
-    "\"hostname\":\"\","
+    "\"hostname\":\"%s\","
     "\"name\":\"%s\","
     "\"version\":\"v2.4.3\","
     "\"settings\":{}"
-  "}", agent->name);
+  "}", agent->name, hostname, agent->name);
 
   if (startup_msg_len >= 0 && (size_t)startup_msg_len < sizeof(startup_msg)) {
     mm_zmtp_publish_legacy(agent, "agent_event", startup_msg);
