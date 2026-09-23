@@ -39,22 +39,21 @@ bool mm_agent_publish(micromads_agent_t *agent, const char *json_payload) {
       const char* hostname = "stm32";
     #endif
 
-    double current_tc = agent->base_timecode + (MM_GET_TICK() - agent->base_tick) / 1000.0;
+    double current_tc = agent->base_timecode + (MM_GET_TICK() - agent -> base_tick) / 1000.0;
 
     // well-formatted JSON payload with agent_id, hostname, and timecode
     char formatted_payload[MM_MAX_PAYLOAD_LEN];
     if (json_payload[0] == '{') {
       snprintf(formatted_payload, sizeof(formatted_payload),
         "{\"agent_id\":\"%s\",\"hostname\":\"%s\",\"timecode\":%.3f,%s",
-        agent->name, hostname, current_tc, json_payload + 1);
+        agent -> name, hostname, current_tc, json_payload + 1);
+
     } else {
-        // Fallback: se l'utente non ha passato un oggetto JSON valido, lo si incapsula in "data"
-        snprintf(formatted_payload, sizeof(formatted_payload),
-                 "{\"agent_id\":\"%s\",\"hostname\":\"%s\",\"timecode\":%.3f,\"data\":%s}",
-                 agent->name, hostname, current_tc, json_payload);
+      snprintf(formatted_payload, sizeof(formatted_payload),
+        "{\"agent_id\":\"%s\",\"hostname\":\"%s\",\"timecode\":%.3f,\"data\":%s}",
+        agent -> name, hostname, current_tc, json_payload);
     }
 
-    // 4. Pubblica sul topic corretto
     #ifndef INI_PARSER
     return mm_zmtp_publish_legacy(agent, PUB_TOPIC, formatted_payload);
     #else
