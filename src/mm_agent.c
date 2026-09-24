@@ -4,6 +4,14 @@
 #include "mads_config.h"
 #include <string.h>
 
+#ifdef USE_ESP32
+  #include <Arduino.h>
+  #define MM_GET_TICK() millis()
+#else
+  #include "main.h"
+  #define MM_GET_TICK() HAL_GetTick()
+#endif
+
 void mm_agent_init(micromads_agent_t *agent, const char *name, const char *broker_ip, uint16_t broker_port) {
   // micromads_agent_t strcut reset
   memset(agent, 0, sizeof(micromads_agent_t));
