@@ -1,0 +1,13 @@
+{
+  "name": "micro-MADS",
+  "version": "0.2.0",
+  "description": "MADS agent for microcontrollers (ESP32 sockets or WIZnet W5500)",
+  "keywords": "mads, zeromq, zmtp, industry 4.0",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": ".",
+    "includeDir": "inc",
+    "srcFilter": ["+<src/*.c>", "+<port/*.c>"]
+  }
+}

@@ -1,1 +1,4 @@
 .editorconfig
+test/test_units
+test/test_broker
+*.o
