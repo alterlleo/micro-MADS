@@ -4,6 +4,8 @@
 
 **A lightweight C library that makes a microcontroller a MADS agent**
 
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 </div>
 
 ---
@@ -155,3 +157,7 @@ make live BROKER=127.0.0.1 NAME=stm32_board   # the agent against the broker
 ```
 
 `make live` prints the state changes, the settings read from `mads.ini`, publishes a message every 500 ms and prints what it receives; `mads feedback` shows the published messages.
+
+## License
+
+Distributed under the Apache 2.0 license. See [LICENSE](LICENSE).

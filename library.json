@@ -8,6 +8,14 @@
   "build": {
     "srcDir": ".",
     "includeDir": "inc",
-    "srcFilter": ["+<src/*.c>", "+<port/*.c>"]
+    "srcFilter": [
+      "+<src/*.c>",
+      "+<port/*.c>"
+    ]
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alterlleo/micro-MADS.git"
   }
 }
